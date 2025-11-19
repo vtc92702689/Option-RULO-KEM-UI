@@ -2,6 +2,8 @@
 #include <OneButton.h>
 #include "ota.h"
 #include "func.h"  // Bao gồm file header func.h để sử dụng các hàm từ func.cpp
+#include <AccelStepper.h>
+
 
 
 //U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE); // Khởi tạo đối tượng màn hình OLED U8G2
@@ -12,6 +14,8 @@
 
 
 StaticJsonDocument<200> jsonDoc;
+
+
 
 const char* jsonString = R"()";
 bool isChanged = false;
@@ -259,8 +263,8 @@ void btnDownDuringLongPress() {
 
 //KHAI BÁO CHÂN IO Ở ĐÂY
 
-const int SensorIn1 = 36;
-const int SensorIn2 = 39;
+const int sensorPWM = 36;
+const int sensorFoot = 39;
 const int SensorIn3 = 34;
 const int SensorIn4 = 35;
 const int SensorIn5 = 32;
@@ -273,29 +277,62 @@ const int SensorIn9 = 23;
 const int SensorIn10 = 13;
 
 
-const int Out1 = 4;
-const int Out2 = 16;
+const int OutCylinferFoot = 4;
+const int OutCylinferRelay = 16;
 const int Out3 = 17;
 const int Out4 = 5;
 const int Out5 = 18;
 const int Out6 = 19;
 
-const int Out7 = 27;
-const int Out8 = 14;
+const int CHAN_STEP = 27;
+const int CHAN_DIR = 14;
 
-int pinPWM = 27; // Chọn chân xuất xung
-float freq_kHz = 0;  
 
 //KHAI BÁO THÔNG SỐ TRƯƠNG TRÌNH
-
 /* Ví dụ: int thoiGianNhaDao = 200;
           int soDuMuiDauVao = 10;*/
 
+int SO_BUOC_MOT_VONG_MOTOR = 200; // bước đầy đủ / vòng motor (ví dụ 200)
+int MICROSTEP = 16;                   // microstep trên driver (ví dụ 8,16,32)
+float DUONG_KINH_TRUC_B_MM = 40.0;    // đường kính trục/puli gắn motor B (mm)
+
+float QUANG_DUONG_MOI_XUNG_CAM_MM = 2.5; // trục A di chuyển 1 xung = 2.5 mm
+
+// Giới hạn tốc độ và gia tốc
+// ------------------------
+int TOC_DO_MAX_RPM_B = 340; // RPM tối đa cho motor B (giới hạn vật lý)
+int TOC_DO_MAX_BUOC_MOI_GIAY = (TOC_DO_MAX_RPM_B / 60.0) * SO_BUOC_MOT_VONG_MOTOR * MICROSTEP;
+
+// Gia tốc (tùy chỉnh để tránh mất bước). Giảm nếu mất bước, tăng nếu cần phản ứng nhanh
+float GIA_TOC_BUOC_MOI_GIAY2 = 20000.0; // steps / s^2
+
+// ------------------------
+// Debounce cảm biến (microseconds)
+// ------------------------
+unsigned long DEBOUNCE_CAM_US = 2000; // 2000 µs ~ 2 ms. Tùy chỉnh nếu cần
+
+// ------------------------
+// Biến trạng thái (volatile dùng cho ISR)
+// ------------------------
+
+bool CHIEU_QUAY_DONG_CO = 0;
+int DO_TRE_NGAT_UI = 200;
+
+volatile uint32_t pulseCount = 0;               // chỉ đếm xung, nhỏ gọn trong ISR
+volatile unsigned long lastPulseUs = 0;
+
+long mucTieuCu;
+volatile int lost;
+long getStepperPosition;
+
 
 //TRƯƠNG TRÌNH NGƯỜI DÙNG LẬP TRÌNH
+TaskHandle_t progressTaskHandle = NULL;
+AccelStepper stepper(AccelStepper::DRIVER, CHAN_STEP, CHAN_DIR);
 
 
-void testMode(){
+
+void testMode() {
   switch (testModeStep){
   case 0:
     if(chayTestMode){
@@ -320,13 +357,13 @@ void testMode(){
 
 void testInput(){
   static bool trangthaiCuoiIO1;
-  if (digitalRead(SensorIn1)!= trangthaiCuoiIO1){
-    trangthaiCuoiIO1 = digitalRead(SensorIn1);
+  if (digitalRead(sensorPWM)!= trangthaiCuoiIO1){
+    trangthaiCuoiIO1 = digitalRead(sensorPWM);
     showText("IO 36" , String(trangthaiCuoiIO1).c_str());
   }
   static bool trangthaiCuoiIO2;
-  if (digitalRead(SensorIn2)!= trangthaiCuoiIO2){
-    trangthaiCuoiIO2 = digitalRead(SensorIn2);
+  if (digitalRead(sensorFoot)!= trangthaiCuoiIO2){
+    trangthaiCuoiIO2 = digitalRead(sensorFoot);
     showText("IO 39" , String(trangthaiCuoiIO2).c_str());
   }
   static bool trangthaiCuoiIO3;
@@ -376,24 +413,24 @@ void testOutput(){
     case 0:
       if (hienThiTestOutput){
         maxTestOutputStep = 7;
-        bool tinHieuHienTai = digitalRead(Out1);
+        bool tinHieuHienTai = digitalRead(OutCylinferFoot);
         showText("IO 4", String(tinHieuHienTai).c_str());
         hienThiTestOutput = false;
       } else if (daoTinHieuOutput){
-        bool tinHieuHienTai = digitalRead(Out1);
-        digitalWrite(Out1,!tinHieuHienTai);
+        bool tinHieuHienTai = digitalRead(OutCylinferFoot);
+        digitalWrite(OutCylinferFoot,!tinHieuHienTai);
         hienThiTestOutput = true;
         daoTinHieuOutput = false;
       }
       break;
     case 1:
       if (hienThiTestOutput){
-        bool tinHieuHienTai = digitalRead(Out2);
+        bool tinHieuHienTai = digitalRead(OutCylinferRelay);
         showText("IO 16", String(tinHieuHienTai).c_str());
         hienThiTestOutput = false;
       } else if (daoTinHieuOutput){
-        bool tinHieuHienTai = digitalRead(Out2);
-        digitalWrite(Out2,!tinHieuHienTai);
+        bool tinHieuHienTai = digitalRead(OutCylinferRelay);
+        digitalWrite(OutCylinferRelay,!tinHieuHienTai);
         hienThiTestOutput = true;
         daoTinHieuOutput = false;
       }
@@ -448,24 +485,24 @@ void testOutput(){
       break;
       case 6:
       if (hienThiTestOutput){
-        bool tinHieuHienTai = digitalRead(Out7);
+        bool tinHieuHienTai = digitalRead(CHAN_STEP);
         showText("IO 27", String(tinHieuHienTai).c_str());
         hienThiTestOutput = false;
       } else if (daoTinHieuOutput){
-        bool tinHieuHienTai = digitalRead(Out7);
-        digitalWrite(Out7,!tinHieuHienTai);
+        bool tinHieuHienTai = digitalRead(CHAN_STEP);
+        digitalWrite(CHAN_STEP,!tinHieuHienTai);
         hienThiTestOutput = true;
         daoTinHieuOutput = false;
       }
       break;
       case 7:
       if (hienThiTestOutput){
-        bool tinHieuHienTai = digitalRead(Out8);
+        bool tinHieuHienTai = digitalRead(CHAN_DIR);
         showText("IO 14", String(tinHieuHienTai).c_str());
         hienThiTestOutput = false;
       } else if (daoTinHieuOutput){
-        bool tinHieuHienTai = digitalRead(Out8);
-        digitalWrite(Out8,!tinHieuHienTai);
+        bool tinHieuHienTai = digitalRead(CHAN_DIR);
+        digitalWrite(CHAN_DIR,!tinHieuHienTai);
         hienThiTestOutput = true;
         daoTinHieuOutput = false;
       }
@@ -483,7 +520,10 @@ void tinhToanCaiDat(){
   thoiGianDaoPWM = (1000000*30)/(tocDoQuay*soXungMotor);
   digitalWrite(pinDir,chieuQuayDongCo);
   */
-
+  TOC_DO_MAX_BUOC_MOI_GIAY = (TOC_DO_MAX_RPM_B / 60.0) * SO_BUOC_MOT_VONG_MOTOR * MICROSTEP;
+  QUANG_DUONG_MOI_XUNG_CAM_MM = (jsonDoc["main"]["main1"]["children"]["CD1"]["divisor"].as<float>() != 0.0f) ? (jsonDoc["main"]["main1"]["children"]["CD1"]["configuredValue"].as<float>() / jsonDoc["main"]["main1"]["children"]["CD1"]["divisor"].as<float>()) : 0.0f;
+  DUONG_KINH_TRUC_B_MM     = (jsonDoc["main"]["main1"]["children"]["CD2"]["divisor"].as<float>() != 0.0f) ? (jsonDoc["main"]["main1"]["children"]["CD2"]["configuredValue"].as<float>() / jsonDoc["main"]["main1"]["children"]["CD2"]["divisor"].as<float>()) : 0.0f;
+  digitalWrite(CHAN_DIR,CHIEU_QUAY_DONG_CO);
 }
 
 void loadSetup(){
@@ -493,7 +533,23 @@ void loadSetup(){
   soDuMuiDauVao = jsonDoc["main"]["main1"]["children"]["CD3"]["configuredValue"];
   soDuMuiDauRa = jsonDoc["main"]["main1"]["children"]["CD4"]["configuredValue"];
   */
+  QUANG_DUONG_MOI_XUNG_CAM_MM = (jsonDoc["main"]["main1"]["children"]["CD1"]["divisor"].as<float>() != 0.0f) ? (jsonDoc["main"]["main1"]["children"]["CD1"]["configuredValue"].as<float>() / jsonDoc["main"]["main1"]["children"]["CD1"]["divisor"].as<float>()) : 0.0f;
+  DUONG_KINH_TRUC_B_MM     = (jsonDoc["main"]["main1"]["children"]["CD2"]["divisor"].as<float>() != 0.0f) ? (jsonDoc["main"]["main1"]["children"]["CD2"]["configuredValue"].as<float>() / jsonDoc["main"]["main1"]["children"]["CD2"]["divisor"].as<float>()) : 0.0f;
+  SO_BUOC_MOT_VONG_MOTOR = jsonDoc["main"]["main1"]["children"]["CD3"]["configuredValue"];
+  CHIEU_QUAY_DONG_CO = jsonDoc["main"]["main1"]["children"]["CD4"]["configuredValue"];
+  TOC_DO_MAX_RPM_B = jsonDoc["main"]["main1"]["children"]["CD5"]["configuredValue"];
+  DO_TRE_NGAT_UI = jsonDoc["main"]["main1"]["children"]["CD6"]["configuredValue"];
+  MICROSTEP = jsonDoc["main"]["main1"]["children"]["CD7"]["configuredValue"];
+  
+  
+  // Gia tốc (tùy chỉnh để tránh mất bước). Giảm nếu mất bước, tăng nếu cần phản ứng nhanh
+  GIA_TOC_BUOC_MOI_GIAY2 = jsonDoc["main"]["main1"]["children"]["CD8"]["configuredValue"];
 
+  // ------------------------
+  // Debounce cảm biến (microseconds)
+  // ------------------------
+  DEBOUNCE_CAM_US = jsonDoc["main"]["main1"]["children"]["CD9"]["configuredValue"];
+  
 }
 
 void veGoc(){
@@ -514,6 +570,46 @@ void khoiDong(){
   delay(100);
   veGoc();
 }
+
+float tinhBuocMoiXung() {
+  const float PI_f = 3.14159265358979323846;
+  float chuViB = PI_f * DUONG_KINH_TRUC_B_MM;
+  float vongCan = QUANG_DUONG_MOI_XUNG_CAM_MM / chuViB;
+  float buoc = vongCan * SO_BUOC_MOT_VONG_MOTOR * MICROSTEP;
+  return buoc;
+}
+
+void IRAM_ATTR camISR() {
+  unsigned long now = micros();
+  if (now - lastPulseUs < DEBOUNCE_CAM_US) return;
+  lastPulseUs = now;
+  pulseCount++; // đơn giản, nhanh, atomic trên 32-bit
+}
+
+void progressTask(void* pvParameters) {
+  unsigned long lastPrint = 0;
+  const TickType_t idleDelay = 50 / portTICK_PERIOD_MS; // kiểm tra ~20Hz
+
+  for (;;) {
+    if (trangThaiHoatDong == 1) {
+      unsigned long now = millis();
+      if (now - lastPrint > 1000) {
+        lastPrint = now;
+
+        // đọc giá trị an toàn: copy vào biến cục bộ
+        long pos = getStepperPosition;
+        long target = mucTieuCu;
+        int lostLocal = lost;
+
+        showProgress(target, pos, lostLocal);
+      }  
+    }
+    vTaskDelay(idleDelay);
+  }
+  // vTaskDelete(NULL); // không tới đây
+}
+
+
 
 void mainRun(){
   switch (mainStep){
@@ -567,8 +663,8 @@ void setup() {
   btnUp.setPressMs(btnSetPressMill);
   btnDown.setPressMs(btnSetPressMill);
 
-  pinMode(SensorIn1,INPUT);
-  pinMode(SensorIn2,INPUT);
+  pinMode(sensorPWM,INPUT);
+  pinMode(sensorFoot,INPUT);
   pinMode(SensorIn3,INPUT);
   pinMode(SensorIn4,INPUT);
   pinMode(SensorIn5,INPUT);
@@ -579,15 +675,15 @@ void setup() {
   pinMode(SensorIn9,INPUT);
   pinMode(SensorIn10,INPUT);
 
-  pinMode(Out1,OUTPUT);
-  pinMode(Out2,OUTPUT);
+  pinMode(OutCylinferFoot,OUTPUT);
+  pinMode(OutCylinferRelay,OUTPUT);
   pinMode(Out3,OUTPUT);
   pinMode(Out4,OUTPUT);
   pinMode(Out5,OUTPUT);
   pinMode(Out6,OUTPUT);
 
-  pinMode(Out7,OUTPUT);
-  pinMode(Out8,OUTPUT);
+  pinMode(CHAN_STEP,OUTPUT);
+  pinMode(CHAN_DIR,OUTPUT);
 
 
   if (!LittleFS.begin()) {
@@ -614,10 +710,33 @@ void setup() {
     return;
   }
 
+  attachInterrupt(digitalPinToInterrupt(sensorPWM), camISR, RISING);
+  // cấu hình stepper
+  stepper.setMaxSpeed(TOC_DO_MAX_BUOC_MOI_GIAY);
+  stepper.setAcceleration(GIA_TOC_BUOC_MOI_GIAY2);
+  //stepper.enableOutputs();
+// In thông tin ban đầu để kiểm tra
+  Serial.println("Khởi động Sync trục A -> Motor B");
+  Serial.print("Số bước trên 1 xung cảm biến (approx): ");
+  Serial.println(tinhBuocMoiXung(), 6);
+  Serial.print("Tốc độ tối đa (steps/s): ");
+  Serial.println(TOC_DO_MAX_BUOC_MOI_GIAY);
+
   readConfigFile();
 
   Serial.println("Load toàn bộ dữ liệu thành công");
   khoiDong();
+
+  xTaskCreatePinnedToCore(
+    progressTask,
+    "ProgressTask",
+    4096,
+    NULL,
+    1,
+    &progressTaskHandle,
+    1
+  );
+
 }
 
 void loop() {
@@ -629,41 +748,69 @@ void loop() {
     btnDown.tick();
     break;
   case 1: {
-  const uint32_t durationTest_ms = 1000;  // Thời gian test: 1000 ms = 1 giây
-  const uint32_t xung_us = 1;             // Thời gian mỗi xung: 2 µs (1 µs HIGH + 1 µs LOW)
+    btnMenu.tick();
+    btnDown.tick();
+    mainRun();
+    bool trangThaiHienTaiChanVit = digitalRead(sensorFoot);
+    static bool trangThaiCuoiChanVit = false;
+    if (trangThaiCuoiChanVit != trangThaiHienTaiChanVit){
+      if (trangThaiHienTaiChanVit){
+        if (Wait(50)){
+          digitalWrite(OutCylinferFoot,HIGH);
+        }
+      } else {
+        digitalWrite(OutCylinferFoot,LOW);
+      }
+      trangThaiCuoiChanVit = trangThaiHienTaiChanVit;
+    } else {
+      resetWait();
+    }
 
-  soXungDaChay = 0;                       // Reset bộ đếm
-  uint32_t start = millis();             // Ghi lại thời điểm bắt đầu
+    static uint32_t lastHandledPulse = 0;
+    //static long mucTieuCu = 0;
 
-  // Vòng lặp test: xuất xung liên tục trong 1 giây
-  while (millis() - start < durationTest_ms) {
-    xuatXungPWM_us(xung_us, pinPWM);     // Gọi hàm xuất xung theo đơn vị µs
+    // Lấy và reset pulseCount theo block (đếm được rồi xử lý hàng loạt)
+    uint32_t pulses = 0;
+    noInterrupts();
+    pulses = pulseCount;
+    pulseCount = 0;
+    interrupts();
+
+    if (pulses) {
+      // chuyển pulses -> bước (làm một lần, giảm số lần gọi moveTo)
+      float buocFloat = tinhBuocMoiXung();
+      long buocAdd = (long)roundf(buocFloat * (float)pulses);
+      mucTieuCu += buocAdd;
+      stepper.moveTo(mucTieuCu);
+    }
+    // gọi run thường xuyên
+    stepper.run();
+    getStepperPosition = stepper.currentPosition();
+    lost = mucTieuCu - getStepperPosition;
+    static bool relayON = false;
+    static unsigned long lastRelayON = 0;
+
+    if(!lost && WaitMillis(lastRelayON , DO_TRE_NGAT_UI)){
+      digitalWrite(OutCylinferRelay,LOW);
+      relayON = false;
+      lastRelayON = millis();
+    } else if (lost){
+      if (relayON){
+        lastRelayON = millis();
+      } else {
+        digitalWrite(OutCylinferRelay,HIGH);
+        relayON = true;
+      }
+    }
+    
+    /*static unsigned long lastPrint = 0;
+    if (millis() - lastPrint > 1000) {
+      lastPrint = millis();
+      showProgress(mucTieuCu,getStepperPosition,lost);
+    }
+    break;*/
   }
-
-  // Tính tần số thực tế đạt được (số xung / giây)
-  float freq_Hz = (float)soXungDaChay / (durationTest_ms / 1000.0); // Hz
-  freq_kHz = freq_Hz / 1000.0;                                      // kHz
-
-  // Hiển thị thông tin lên màn hình OLED
-  char buf[48];
-  u8g2.clearBuffer();
-
-  u8g2.drawStr(0, 12, "PWM xung test (us)");
-
-  snprintf(buf, sizeof(buf), "Pin: %d", pinPWM);
-  u8g2.drawStr(0, 26, buf);
-
-  snprintf(buf, sizeof(buf), "Xung: %lu", soXungDaChay);
-  u8g2.drawStr(0, 40, buf);
-
-  snprintf(buf, sizeof(buf), "Freq: %.2f kHz", freq_kHz);
-  u8g2.drawStr(0, 54, buf);
-
-  u8g2.sendBuffer();
-
-  delay(1000); // Chờ 1 giây trước khi test lại
-}  
-    break;
+    
   case 2:
     mainRun();
     break;

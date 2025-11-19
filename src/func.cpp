@@ -191,18 +191,18 @@ void showProgress(int parameter1, int parameter2, int parameter3) {
   u8g2.setFont(u8g2_font_unifont_t_vietnamese1); // Thiết lập font chữ thường (không đậm)
 
   u8g2.setCursor(0, 18); // Đặt vị trí con trỏ
-  u8g2.print("Total Stick: "); // Hiển thị tiêu đề tổng số
-  u8g2.setCursor(100, 18); // Đặt vị trí con trỏ cho giá trị
+  u8g2.print("M.Tiêu "); // Hiển thị tiêu đề tổng số
+  u8g2.setCursor(64, 18); // Đặt vị trí con trỏ cho giá trị
   u8g2.print(parameter1); // Hiển thị giá trị tổng số
 
   u8g2.setCursor(0, 36); // Đặt vị trí con trỏ
-  u8g2.print("Re.Stick: "); // Hiển thị tiêu đề Re.Stick
-  u8g2.setCursor(100, 36); // Đặt vị trí con trỏ cho giá trị
+  u8g2.print("H.Tại: "); // Hiển thị tiêu đề Re.Stick
+  u8g2.setCursor(64, 36); // Đặt vị trí con trỏ cho giá trị
   u8g2.print(parameter2); // Hiển thị giá trị Re.Stick
 
   u8g2.setCursor(0, 54); // Đặt vị trí con trỏ
-  u8g2.print("Count output: "); // Hiển thị tiêu đề Count output
-  u8g2.setCursor(100, 54); // Đặt vị trí con trỏ cho giá trị
+  u8g2.print("Lost: "); // Hiển thị tiêu đề Count output
+  u8g2.setCursor(64, 54); // Đặt vị trí con trỏ cho giá trị
   u8g2.print(parameter3); // Hiển thị giá trị Count output
 
   u8g2.sendBuffer(); // Gửi dữ liệu từ bộ đệm lên màn hình

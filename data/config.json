@@ -6,31 +6,72 @@
       "children": {
         "CD1": {
           "key": "CD1",
-          "text": "Đ.Trễ xoay",
-          "defaultValue": 150,
-          "configuredValue": 150,
+          "text": "Mật độ mũi",
+          "defaultValue": 25,
+          "configuredValue": 25,
           "minValue": 1,
-          "maxValue": 10000,
+          "maxValue": 50,
           "accessAllowed": true,
           "editAllowed": true,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": 10
         },
         "CD2": {
           "key": "CD2",
-          "text": "Đ.Trễ gạt chắn",
-          "defaultValue": 150,
-          "configuredValue": 150,
+          "text": "Đ.Kính tr.tải A",
+          "defaultValue": 4000,
+          "configuredValue": 4000,
           "minValue": 1,
-          "maxValue": 10000,
+          "maxValue": 9999,
           "accessAllowed": true,
           "editAllowed": true,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": 100
         },
         "CD3": {
           "key": "CD3",
-          "text": "Đ.Trễ trả ngược",
+          "text": "Số xung motor",
+          "defaultValue": 400,
+          "configuredValue": 400,
+          "minValue": 10,
+          "maxValue": 2000,
+          "accessAllowed": true,
+          "editAllowed": true,
+          "explanationMode": false,
+          "explanationDetails": "",
+          "divisor": ""
+        },
+        "CD4": {
+          "key": "CD4",
+          "text": "Chiều quay Đ.cơ",
+          "defaultValue": 0,
+          "configuredValue": 0,
+          "minValue": 0,
+          "maxValue": 1,
+          "accessAllowed": true,
+          "editAllowed": true,
+          "explanationMode": false,
+          "explanationDetails": "",
+          "divisor": ""
+        },
+        "CD5": {
+          "key": "CD5",
+          "text": "Tốc độ",
+          "defaultValue": 300,
+          "configuredValue": 300,
+          "minValue": 50,
+          "maxValue": 320,
+          "accessAllowed": true,
+          "editAllowed": true,
+          "explanationMode": false,
+          "explanationDetails": "",
+          "divisor": ""
+        },
+        "CD6": {
+          "key": "CD6",
+          "text": "Độ trễ ngắt ủi",
           "defaultValue": 200,
           "configuredValue": 200,
           "minValue": 1,
@@ -38,34 +79,50 @@
           "accessAllowed": true,
           "editAllowed": true,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": ""
         },
-        "CD4": {
-          "key": "CD4",
-          "text": "Đ.Trễ kẹp",
-          "defaultValue": 500,
-          "configuredValue": 500,
+        "CD7": {
+          "key": "CD7",
+          "text": "Hệ số bước",
+          "defaultValue": 8,
+          "configuredValue": 8,
           "minValue": 1,
-          "maxValue": 10000,
+          "maxValue": 16,
           "accessAllowed": true,
           "editAllowed": true,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": ""
         },
-        "CD5": {
-          "key": "CD5",
-          "text": "Đ.Trễ nhả kẹp",
-          "defaultValue": 300,
-          "configuredValue": 300,
-          "minValue": 1,
-          "maxValue": 10000,
+        "CD8": {
+          "key": "CD8",
+          "text": "Gia tốc",
+          "defaultValue": 20000,
+          "configuredValue": 20000,
+          "minValue": 200,
+          "maxValue": 99999,
           "accessAllowed": true,
           "editAllowed": true,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": ""
+        },
+        "CD9": {
+          "key": "CD9",
+          "text": "T.Gian C.Nhiễu",
+          "defaultValue": 20,
+          "configuredValue": 20,
+          "minValue": 1,
+          "maxValue": 5000,
+          "accessAllowed": true,
+          "editAllowed": true,
+          "explanationMode": false,
+          "explanationDetails": "",
+          "divisor": ""
         }
       },
-      "totalChildren": 5
+      "totalChildren": 9
     },
     "main2": {
       "text": "CHỨC NĂNG",
@@ -81,7 +138,8 @@
           "accessAllowed": true,
           "editAllowed": true,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": ""
         },
         "CN2": {
           "key": "CN2",
@@ -93,7 +151,8 @@
           "accessAllowed": true,
           "editAllowed": true,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": ""
         },
         "CN3": {
           "key": "CN3",
@@ -105,7 +164,8 @@
           "accessAllowed": true,
           "editAllowed": true,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": ""
         },
         "CN4": {
           "key": "CN4",
@@ -117,7 +177,8 @@
           "accessAllowed": true,
           "editAllowed": true,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": ""
         },
         "CN5": {
           "key": "CN5",
@@ -129,7 +190,8 @@
           "accessAllowed": true,
           "editAllowed": true,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": ""
         }
       },
       "totalChildren": 5
@@ -142,25 +204,27 @@
           "key": "GT1",
           "text": "Vertion Code",
           "defaultValue": 0,
-          "configuredValue": "v1.0.0-v2",
+          "configuredValue": "v1.0.0",
           "minValue": 0,
           "maxValue": 0,
           "accessAllowed": true,
           "editAllowed": false,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": ""
         },
         "GT2": {
           "key": "GT2",
           "text": "Board Model",
           "defaultValue": 0,
-          "configuredValue": "v.6x6-v1.2",
+          "configuredValue": "6x6-v1.2",
           "minValue": 1,
           "maxValue": 1,
           "accessAllowed": true,
           "editAllowed": false,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": ""
         },
         "GT3": {
           "key": "GT3",
@@ -172,7 +236,8 @@
           "accessAllowed": true,
           "editAllowed": false,
           "explanationMode": false,
-          "explanationDetails": ""
+          "explanationDetails": "",
+          "divisor": ""
         }
       },
       "totalChildren": 3
