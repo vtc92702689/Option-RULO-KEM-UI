@@ -321,7 +321,7 @@ int DO_TRE_NGAT_UI = 200;
 volatile uint32_t pulseCount = 0;               // chỉ đếm xung, nhỏ gọn trong ISR
 volatile unsigned long lastPulseUs = 0;
 
-long mucTieuCu;
+long mucTieuBuoc;
 volatile int lost;
 long getStepperPosition;
 
@@ -523,7 +523,8 @@ void tinhToanCaiDat(){
   TOC_DO_MAX_BUOC_MOI_GIAY = (TOC_DO_MAX_RPM_B / 60.0) * SO_BUOC_MOT_VONG_MOTOR * MICROSTEP;
   QUANG_DUONG_MOI_XUNG_CAM_MM = (jsonDoc["main"]["main1"]["children"]["CD1"]["divisor"].as<float>() != 0.0f) ? (jsonDoc["main"]["main1"]["children"]["CD1"]["configuredValue"].as<float>() / jsonDoc["main"]["main1"]["children"]["CD1"]["divisor"].as<float>()) : 0.0f;
   DUONG_KINH_TRUC_B_MM     = (jsonDoc["main"]["main1"]["children"]["CD2"]["divisor"].as<float>() != 0.0f) ? (jsonDoc["main"]["main1"]["children"]["CD2"]["configuredValue"].as<float>() / jsonDoc["main"]["main1"]["children"]["CD2"]["divisor"].as<float>()) : 0.0f;
-  digitalWrite(CHAN_DIR,CHIEU_QUAY_DONG_CO);
+  stepper.setMaxSpeed(TOC_DO_MAX_BUOC_MOI_GIAY);
+  stepper.setAcceleration(GIA_TOC_BUOC_MOI_GIAY2);
 }
 
 void loadSetup(){
@@ -588,7 +589,7 @@ void IRAM_ATTR camISR() {
 
 void progressTask(void* pvParameters) {
   unsigned long lastPrint = 0;
-  const TickType_t idleDelay = 50 / portTICK_PERIOD_MS; // kiểm tra ~20Hz
+  const TickType_t idleDelay = 100 / portTICK_PERIOD_MS; // kiểm tra ~20Hz
 
   for (;;) {
     if (trangThaiHoatDong == 1) {
@@ -598,7 +599,7 @@ void progressTask(void* pvParameters) {
 
         // đọc giá trị an toàn: copy vào biến cục bộ
         long pos = getStepperPosition;
-        long target = mucTieuCu;
+        long target = mucTieuBuoc;
         int lostLocal = lost;
 
         showProgress(target, pos, lostLocal);
@@ -608,7 +609,68 @@ void progressTask(void* pvParameters) {
   }
   // vTaskDelete(NULL); // không tới đây
 }
+void taskChanVit(void* pvParameters) {
+  const TickType_t idleDelay = 50 / portTICK_PERIOD_MS; // delay ~20Hz để CPU nghỉ
 
+  static unsigned long lastSensorFoot = 0;   // thời điểm thay đổi gần nhất
+  static bool trangThaiOnDinh = false;       // trạng thái ổn định sau chống rung
+  static bool trangThaiTruoc = false;        // trạng thái đọc tức thời trước đó
+
+  for (;;) {
+    if (trangThaiHoatDong == 1) {
+      bool trangThaiHienTai = digitalRead(sensorFoot); // đọc cảm biến ngay lúc này
+
+      // Nếu trạng thái hiện tại khác trạng thái trước đó → có thay đổi
+      if (trangThaiHienTai != trangThaiTruoc) {
+        lastSensorFoot = millis();            // ghi lại thời điểm thay đổi
+        trangThaiTruoc = trangThaiHienTai;    // cập nhật trạng thái tức thời
+      }
+
+      // Nếu đã qua 50ms kể từ lần thay đổi gần nhất
+      if (WaitMillis(lastSensorFoot, 50)) {
+        // Kiểm tra xem trạng thái ổn định có khác trạng thái tức thời không
+        if (trangThaiOnDinh != trangThaiTruoc) {
+          trangThaiOnDinh = trangThaiTruoc;   // cập nhật trạng thái ổn định
+
+          // Xuất tín hiệu ra chân điều khiển xi lanh
+          if (trangThaiOnDinh) {
+            digitalWrite(OutCylinferFoot, HIGH); // bật xi lanh
+          } else {
+            digitalWrite(OutCylinferFoot, LOW);  // tắt xi lanh
+          }
+        }
+      }
+    }
+    vTaskDelay(idleDelay); // nghỉ một chút để tránh chiếm CPU
+  }
+  // vTaskDelete(NULL); // không bao giờ tới đây
+}
+
+void taskChayUI(void* pvParameters) {
+  const TickType_t idleDelay = 50 / portTICK_PERIOD_MS; // kiểm tra ~20Hz
+
+  for (;;) {
+    if (trangThaiHoatDong == 1) {
+      static bool relayON = false;
+      static unsigned long lastRelayON = 0;
+
+      if(!lost && WaitMillis(lastRelayON , DO_TRE_NGAT_UI)){
+        digitalWrite(OutCylinferRelay,LOW);
+        relayON = false;
+        lastRelayON = millis();
+      } else if (lost) {
+        if (relayON){
+          lastRelayON = millis();
+        } else {
+          digitalWrite(OutCylinferRelay,HIGH);
+          relayON = true;
+        }
+      }
+    }
+    vTaskDelay(idleDelay);
+  }
+  // vTaskDelete(NULL); // không tới đây
+}
 
 
 void mainRun(){
@@ -712,8 +774,6 @@ void setup() {
 
   attachInterrupt(digitalPinToInterrupt(sensorPWM), camISR, RISING);
   // cấu hình stepper
-  stepper.setMaxSpeed(TOC_DO_MAX_BUOC_MOI_GIAY);
-  stepper.setAcceleration(GIA_TOC_BUOC_MOI_GIAY2);
   //stepper.enableOutputs();
 // In thông tin ban đầu để kiểm tra
   Serial.println("Khởi động Sync trục A -> Motor B");
@@ -734,7 +794,25 @@ void setup() {
     NULL,
     1,
     &progressTaskHandle,
-    1
+    0
+  );
+  xTaskCreatePinnedToCore(
+    taskChanVit,
+    "taskChanVit",
+    4096,
+    NULL,
+    2,
+    &progressTaskHandle,
+    0
+  );
+  xTaskCreatePinnedToCore(
+    taskChayUI,
+    "taskChayUI",
+    4096,
+    NULL,
+    3,
+    &progressTaskHandle,
+    0
   );
 
 }
@@ -750,24 +828,10 @@ void loop() {
   case 1: {
     btnMenu.tick();
     btnDown.tick();
-    mainRun();
-    bool trangThaiHienTaiChanVit = digitalRead(sensorFoot);
-    static bool trangThaiCuoiChanVit = false;
-    if (trangThaiCuoiChanVit != trangThaiHienTaiChanVit){
-      if (trangThaiHienTaiChanVit){
-        if (Wait(50)){
-          digitalWrite(OutCylinferFoot,HIGH);
-        }
-      } else {
-        digitalWrite(OutCylinferFoot,LOW);
-      }
-      trangThaiCuoiChanVit = trangThaiHienTaiChanVit;
-    } else {
-      resetWait();
-    }
+    //mainRun();
 
     static uint32_t lastHandledPulse = 0;
-    //static long mucTieuCu = 0;
+    //static long mucTieuBuoc = 0;
 
     // Lấy và reset pulseCount theo block (đếm được rồi xử lý hàng loạt)
     uint32_t pulses = 0;
@@ -776,37 +840,30 @@ void loop() {
     pulseCount = 0;
     interrupts();
 
-    if (pulses) {
+    if (pulses && CHIEU_QUAY_DONG_CO) {
       // chuyển pulses -> bước (làm một lần, giảm số lần gọi moveTo)
       float buocFloat = tinhBuocMoiXung();
       long buocAdd = (long)roundf(buocFloat * (float)pulses);
-      mucTieuCu += buocAdd;
-      stepper.moveTo(mucTieuCu);
+      mucTieuBuoc += buocAdd;
+      stepper.moveTo(mucTieuBuoc);
+    } else {
+      float buocFloat = tinhBuocMoiXung();
+      long buocAdd = (long)roundf(buocFloat * (float)pulses);
+      mucTieuBuoc -= buocAdd;
+      stepper.moveTo(mucTieuBuoc);
     }
     // gọi run thường xuyên
     stepper.run();
-    getStepperPosition = stepper.currentPosition();
-    lost = mucTieuCu - getStepperPosition;
-    static bool relayON = false;
-    static unsigned long lastRelayON = 0;
 
-    if(!lost && WaitMillis(lastRelayON , DO_TRE_NGAT_UI)){
-      digitalWrite(OutCylinferRelay,LOW);
-      relayON = false;
-      lastRelayON = millis();
-    } else if (lost){
-      if (relayON){
-        lastRelayON = millis();
-      } else {
-        digitalWrite(OutCylinferRelay,HIGH);
-        relayON = true;
-      }
-    }
+    getStepperPosition = stepper.currentPosition();
+    lost = mucTieuBuoc - getStepperPosition;
+
+    
     
     /*static unsigned long lastPrint = 0;
     if (millis() - lastPrint > 1000) {
       lastPrint = millis();
-      showProgress(mucTieuCu,getStepperPosition,lost);
+      showProgress(mucTieuBuoc,getStepperPosition,lost);
     }
     break;*/
   }
