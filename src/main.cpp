@@ -22,6 +22,7 @@ bool isChanged = false;
 void tinhToanCaiDat();
 void loadSetup();
 void veGoc();
+float tinhBuocMoiXung();
 
 OneButton btnMenu(0, true,false);
 OneButton btnSet(2, false,false);
@@ -305,6 +306,7 @@ int TOC_DO_MAX_BUOC_MOI_GIAY = (TOC_DO_MAX_RPM_B / 60.0) * SO_BUOC_MOT_VONG_MOTO
 
 // Gia tốc (tùy chỉnh để tránh mất bước). Giảm nếu mất bước, tăng nếu cần phản ứng nhanh
 float GIA_TOC_BUOC_MOI_GIAY2 = 20000.0; // steps / s^2
+float buocFloat = 0;
 
 // ------------------------
 // Debounce cảm biến (microseconds)
@@ -525,6 +527,7 @@ void tinhToanCaiDat(){
   DUONG_KINH_TRUC_B_MM     = (jsonDoc["main"]["main1"]["children"]["CD2"]["divisor"].as<float>() != 0.0f) ? (jsonDoc["main"]["main1"]["children"]["CD2"]["configuredValue"].as<float>() / jsonDoc["main"]["main1"]["children"]["CD2"]["divisor"].as<float>()) : 0.0f;
   stepper.setMaxSpeed(TOC_DO_MAX_BUOC_MOI_GIAY);
   stepper.setAcceleration(GIA_TOC_BUOC_MOI_GIAY2);
+  buocFloat = tinhBuocMoiXung();
 }
 
 void loadSetup(){
@@ -587,7 +590,7 @@ void IRAM_ATTR camISR() {
   pulseCount++; // đơn giản, nhanh, atomic trên 32-bit
 }
 
-void progressTask(void* pvParameters) {
+/*void progressTask(void* pvParameters) {
   unsigned long lastPrint = 0;
   const TickType_t idleDelay = 100 / portTICK_PERIOD_MS; // kiểm tra ~20Hz
 
@@ -608,7 +611,7 @@ void progressTask(void* pvParameters) {
     vTaskDelay(idleDelay);
   }
   // vTaskDelete(NULL); // không tới đây
-}
+}*/
 void taskChanVit(void* pvParameters) {
   const TickType_t idleDelay = 50 / portTICK_PERIOD_MS; // delay ~20Hz để CPU nghỉ
 
@@ -787,7 +790,7 @@ void setup() {
   Serial.println("Load toàn bộ dữ liệu thành công");
   khoiDong();
 
-  xTaskCreatePinnedToCore(
+  /*xTaskCreatePinnedToCore(
     progressTask,
     "ProgressTask",
     4096,
@@ -795,7 +798,7 @@ void setup() {
     1,
     &progressTaskHandle,
     0
-  );
+  );*/
   xTaskCreatePinnedToCore(
     taskChanVit,
     "taskChanVit",
@@ -842,12 +845,10 @@ void loop() {
 
     if (pulses && CHIEU_QUAY_DONG_CO) {
       // chuyển pulses -> bước (làm một lần, giảm số lần gọi moveTo)
-      float buocFloat = tinhBuocMoiXung();
       long buocAdd = (long)roundf(buocFloat * (float)pulses);
       mucTieuBuoc += buocAdd;
       stepper.moveTo(mucTieuBuoc);
     } else {
-      float buocFloat = tinhBuocMoiXung();
       long buocAdd = (long)roundf(buocFloat * (float)pulses);
       mucTieuBuoc -= buocAdd;
       stepper.moveTo(mucTieuBuoc);
